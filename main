@@ -1,0 +1,50 @@
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from github import Github
+
+TOKEN = 'YOUR_TELEGRAM_TOKEN'
+GITHUB_TOKEN = 'YOUR_GITHUB_TOKEN'
+github = Github(GITHUB_TOKEN)
+user_repos = {}  # {chat_id: repo_name}
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('Привет! Установите репозиторий: /set_repo owner/repo')
+
+async def set_repo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        repo_name = context.args[0]
+        chat_id = update.message.chat_id
+        user_repos[chat_id] = repo_name
+        await update.message.reply_text(f'Репозиторий установлен: {repo_name}')
+    else:
+        await update.message.reply_text('Укажите: /set_repo owner/repo')
+
+async def create_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    if chat_id in user_repos and len(context.args) >= 2:
+        title = context.args[0]
+        body = ' '.join(context.args[1:])
+        repo = github.get_repo(user_repos[chat_id])
+        issue = repo.create_issue(title=title, body=body)
+        await update.message.reply_text(f'Issue создан: #{issue.number} {issue.html_url}')
+    else:
+        await update.message.reply_text('Установите репозиторий и укажите title body')
+
+async def close_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    if chat_id in user_repos and context.args:
+        number = int(context.args[0])
+        repo = github.get_repo(user_repos[chat_id])
+        issue = repo.get_issue(number)
+        issue.edit(state='closed')
+        await update.message.reply_text(f'Issue #{number} закрыт')
+    else:
+        await update.message.reply_text('Укажите номер: /close_issue 123')
+
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('set_repo', set_repo))
+    app.add_handler(CommandHandler('create_issue', create_issue))
+    app.add_handler(CommandHandler('close_issue', close_issue))
+    app.run_polling()
